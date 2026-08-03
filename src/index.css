@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+html {
+  font-size: 100%; /* Compact font base size for small mobile screens to prevent overflow and text-clipping */
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 115%; /* Scale relative base font size up on desktops for reading comfort */
+  }
+}
+
+/* Hide up/down spinner arrows in number inputs globally */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* System-wide relative overrides for hardcoded absolute pixels to ensure they scale up cleanly and adaptively */
+.text-\[8\.5px\], .text-\[9px\], .text-\[9\.5px\] {
+  font-size: 0.65rem;
+}
+.text-\[10px\], .text-\[10\.5px\], .text-\[11px\] {
+  font-size: 0.725rem;
+}
+.text-\[12px\] {
+  font-size: 0.8rem;
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .status-pass {
+    color: #4ade80;
+    border-left: 3px solid #4ade80;
+  }
+  .status-warn {
+    color: #fbbf24;
+    border-left: 3px solid #fbbf24;
+  }
+  .status-fail {
+    color: #f87171;
+    border-left: 3px solid #f87171;
+  }
+  .grid-header {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+  .data-cell {
+    font-family: 'ui-monospace', SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.95rem;
+  }
+}
+

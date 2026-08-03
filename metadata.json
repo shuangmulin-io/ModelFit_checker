@@ -1,0 +1,6 @@
+{
+  "name": "LLM Hardware Checker",
+  "description": "Check if your PC or laptop can host local AI models. Analyze your system hardware configurations like RAM and VRAM to see which model sizes and configurations your computer can run smoothly.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
