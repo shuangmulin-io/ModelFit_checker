@@ -16,10 +16,193 @@ import {
   Laptop,
   CheckCircle2,
   HardDrive,
-  Plus
+  Plus,
+  Sun,
+  Moon
 } from "lucide-react";
 
+interface HardwarePreset {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  specs: SystemSpecs;
+}
+
+const HARDWARE_PRESETS: HardwarePreset[] = [
+  {
+    id: "gaming-rtx4090",
+    name: "Gaming Rig (RTX 4090)",
+    badge: "Enthusiast",
+    description: "Intel i9-14900K, 64GB RAM, RTX 4090 (24GB VRAM)",
+    specs: {
+      os: "windows",
+      cpu: "Intel Core i9-14900K (24 Cores / 32 Threads)",
+      cpuClass: "enthusiast",
+      cpuIsAppleSilicon: false,
+      cpuCores: 24,
+      ram: 64,
+      gpu: "NVIDIA GeForce RTX 4090",
+      vram: 24,
+      gpuClass: "nvidia",
+      gpus: [
+        { name: "NVIDIA GeForce RTX 4090", vram: 24, gpuClass: "nvidia", isActive: true, isTarget: true, type: "discrete" },
+        { name: "Intel UHD Graphics 770", vram: 1, gpuClass: "integrated", isActive: false, isTarget: false, type: "integrated" }
+      ]
+    }
+  },
+  {
+    id: "macbook-m3max",
+    name: "MacBook Pro M3 Max 64GB",
+    badge: "Apple Silicon",
+    description: "Apple M3 Max (16 Cores), 64GB Unified Memory",
+    specs: {
+      os: "macos",
+      cpu: "Apple M3 Max (16 Cores)",
+      cpuClass: "apple_silicon",
+      cpuIsAppleSilicon: true,
+      cpuCores: 16,
+      ram: 64,
+      gpu: "Apple M3 Max Unified GPU (40-Core)",
+      vram: 48,
+      gpuClass: "apple_unified",
+      gpus: []
+    }
+  },
+  {
+    id: "budget-rtx4060",
+    name: "Budget Creator Laptop",
+    badge: "Mid-Range",
+    description: "AMD Ryzen 7, 16GB RAM, RTX 4060 (8GB VRAM)",
+    specs: {
+      os: "windows",
+      cpu: "AMD Ryzen 7 7840HS (8 Cores / 16 Threads)",
+      cpuClass: "high",
+      cpuIsAppleSilicon: false,
+      cpuCores: 8,
+      ram: 16,
+      gpu: "NVIDIA GeForce RTX 4060 Laptop GPU",
+      vram: 8,
+      gpuClass: "nvidia",
+      gpus: [
+        { name: "NVIDIA GeForce RTX 4060 Laptop GPU", vram: 8, gpuClass: "nvidia", isActive: true, isTarget: true, type: "discrete" },
+        { name: "AMD Radeon 780M Graphics", vram: 2, gpuClass: "integrated", isActive: false, isTarget: false, type: "integrated" }
+      ]
+    }
+  },
+  {
+    id: "macbook-air-m2",
+    name: "MacBook Air M2 16GB",
+    badge: "Ultraportable",
+    description: "Apple M2 (8 Cores), 16GB Unified Memory",
+    specs: {
+      os: "macos",
+      cpu: "Apple M2 (8 Cores)",
+      cpuClass: "apple_silicon",
+      cpuIsAppleSilicon: true,
+      cpuCores: 8,
+      ram: 16,
+      gpu: "Apple M2 Unified GPU (10-Core)",
+      vram: 12,
+      gpuClass: "apple_unified",
+      gpus: []
+    }
+  },
+  {
+    id: "entry-laptop",
+    name: "Budget Laptop 8GB",
+    badge: "Entry",
+    description: "Intel i5, 8GB RAM, Integrated Graphics",
+    specs: {
+      os: "windows",
+      cpu: "Intel Core i5-1235U (10 Cores)",
+      cpuClass: "medium",
+      cpuIsAppleSilicon: false,
+      cpuCores: 10,
+      ram: 8,
+      gpu: "Intel Iris Xe Graphics",
+      vram: 4,
+      gpuClass: "integrated",
+      gpus: [
+        { name: "Intel Iris Xe Graphics", vram: 4, gpuClass: "integrated", isActive: true, isTarget: true, type: "integrated" }
+      ]
+    }
+  }
+];
+
 export default function App() {
+  // Theme state
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem("modelfit_theme");
+    return (saved === "light" || saved === "dark") ? saved : "dark";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("modelfit_theme", theme);
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [theme]);
+
+  // Server Analytics state
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<{
+    totalRequests: number;
+    totalTokensConsumed: number;
+    requestsByEndpoint: Record<string, number>;
+    requestLogs: Array<{
+      id: string;
+      timestamp: number;
+      endpoint: string;
+      ip: string;
+      tokensEstimated: number;
+      status: number;
+    }>;
+    rateLimitMax: number;
+    rateLimitWindowSeconds: number;
+  } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  const fetchAnalytics = async () => {
+    try {
+      setAnalyticsLoading(true);
+      const res = await fetch("/api/analytics");
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyticsData(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch analytics", e);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const handleResetAnalytics = async () => {
+    try {
+      const res = await fetch("/api/analytics/reset", { method: "POST" });
+      if (res.ok) {
+        fetchAnalytics();
+      }
+    } catch (e) {
+      console.error("Failed to reset analytics", e);
+    }
+  };
+
+  const handleExportAnalyticsCSV = () => {
+    window.open("/api/analytics/export", "_blank");
+  };
+
+  useEffect(() => {
+    if (showAnalyticsModal) {
+      fetchAnalytics();
+      const interval = setInterval(fetchAnalytics, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [showAnalyticsModal]);
+
   // 1. Core Hardware Specifications State
   const [specs, setSpecs] = useState<SystemSpecs>({
     os: "windows",
@@ -215,6 +398,13 @@ export default function App() {
     setFormSpecs(specs);
     setHasSecondaryGpu(!!(specs.gpus && specs.gpus.length > 1));
     setIsEditingSpecs(true);
+  };
+
+  const handleApplyPreset = (preset: HardwarePreset) => {
+    setSpecs(preset.specs);
+    setFormSpecs(preset.specs);
+    setHasSecondaryGpu(!!(preset.specs.gpus && preset.specs.gpus.length > 1));
+    setIsEditingSpecs(false);
   };
 
   const handleApplyComputedSpecs = () => {
@@ -727,9 +917,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 flex flex-col font-sans antialiased" id="main-view">
+    <div className={`min-h-screen app-bg flex flex-col font-sans antialiased transition-colors duration-300 ${theme === "dark" ? "dark" : ""}`} id="main-view">
       {/* 1. Header block */}
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[#1e293b] p-3 sm:p-4 rounded-b-lg border-b border-slate-705 shadow-xl gap-3 sm:gap-4 md:gap-0">
+      <header className={`flex flex-col sm:flex-row justify-between items-start sm:items-center ${theme === 'dark' ? 'bg-[#1e293b] border-slate-705 text-slate-100' : 'bg-white border-slate-200 text-slate-900 shadow-sm'} p-3 sm:p-4 rounded-b-lg border-b shadow-xl gap-3 sm:gap-4 md:gap-0 transition-colors duration-300`}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 sm:w-10 sm:h-10 bg-indigo-600 rounded flex items-center justify-center font-bold text-lg sm:text-xl text-white shadow-inner select-none">
             MF
@@ -741,12 +931,47 @@ export default function App() {
                 PRO v2.4.0
               </span>
             </h1>
-            <p className="text-[11px] sm:text-xs text-slate-400 mt-1 sm:mt-0.5">Local LLM Compatibility & Hardware Optimization Engine</p>
+            <p className={`text-[11px] sm:text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'} mt-1 sm:mt-0.5`}>Local LLM Compatibility & Hardware Optimization Engine</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
-          <div className="text-left sm:text-right bg-slate-800/40 border border-slate-700/60 rounded-lg px-3 py-1 sm:px-3.5 sm:py-1.5 shadow-inner w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+          <button
+            onClick={() => setShowAnalyticsModal(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer font-mono text-xs shadow-sm ${
+              theme === 'dark' 
+                ? 'bg-slate-800 text-indigo-300 border-indigo-500/30 hover:bg-indigo-900/40' 
+                : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+            }`}
+            title="View Server Rate Limiting & Token Analytics"
+          >
+            <Activity className="w-4 h-4 text-indigo-500" />
+            <span>API Analytics</span>
+          </button>
+
+          <button
+            onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer font-mono text-xs shadow-sm ${
+              theme === 'dark' 
+                ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-750' 
+                : 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200'
+            }`}
+            title={theme === 'dark' ? "Switch to Pristine Light Mode" : "Switch to Rich Dark Luxury Canvas"}
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="w-4 h-4 text-amber-400" />
+                <span>Light Mode</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4 text-indigo-600" />
+                <span>Dark Mode</span>
+              </>
+            )}
+          </button>
+
+          <div className={`text-left sm:text-right ${theme === 'dark' ? 'bg-slate-800/40 border-slate-700/60' : 'bg-slate-100 border-slate-200'} border rounded-lg px-3 py-1 sm:px-3.5 sm:py-1.5 shadow-inner w-auto`}>
             <span className="text-[9px] uppercase text-slate-500 font-extrabold tracking-widest block leading-none">System Status</span>
             <span className="text-xs text-emerald-400 font-bold flex items-center gap-1.5 mt-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
@@ -755,6 +980,149 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Analytics Modal Dialog */}
+      {showAnalyticsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className={`w-full max-w-3xl rounded-xl border ${theme === 'dark' ? 'bg-[#1e293b] border-slate-700 text-slate-100 shadow-2xl' : 'bg-white border-slate-200 text-slate-900 shadow-xl'} flex flex-col max-h-[90vh] overflow-hidden`}>
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-700/50 flex items-center justify-between bg-indigo-600/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  📊
+                </div>
+                <div>
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    Server-Side Rate Limiting & Token Usage Analytics
+                  </h3>
+                  <p className="text-xs text-slate-400">Track API call frequency, estimated token consumption, and rate limits</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowAnalyticsModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors font-mono text-sm"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs">
+              {analyticsLoading && !analyticsData ? (
+                <div className="py-12 text-center text-slate-400 font-mono animate-pulse">
+                  Loading live server metrics...
+                </div>
+              ) : analyticsData ? (
+                <>
+                  {/* Top Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3.5 rounded-lg bg-slate-950/40 border border-indigo-500/25 flex flex-col gap-1">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Total API Calls</span>
+                      <span className="text-2xl font-bold font-mono text-indigo-400">{analyticsData.totalRequests}</span>
+                      <span className="text-[10px] text-slate-500">Processed securely on server</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg bg-slate-950/40 border border-emerald-500/25 flex flex-col gap-1">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Est. Token Consumption</span>
+                      <span className="text-2xl font-bold font-mono text-emerald-400">{analyticsData.totalTokensConsumed.toLocaleString()}</span>
+                      <span className="text-[10px] text-slate-500">Prompt + completion tokens</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg bg-slate-950/40 border border-amber-500/25 flex flex-col gap-1">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Rate Limit Policy</span>
+                      <span className="text-xl font-bold font-mono text-amber-400">{analyticsData.rateLimitMax} req / min</span>
+                      <span className="text-[10px] text-slate-500">Anti-abuse bucket enforced</span>
+                    </div>
+                  </div>
+
+                  {/* Endpoints Breakdown */}
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-300 font-mono text-xs uppercase tracking-wider">Requests by Endpoint</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(analyticsData.requestsByEndpoint || {}).map(([ep, count]) => (
+                        <div key={ep} className="p-2.5 rounded bg-slate-950/50 border border-slate-800 flex items-center justify-between font-mono">
+                          <span className="text-indigo-300 truncate">{ep}</span>
+                          <span className="bg-indigo-500/20 text-indigo-200 px-2 py-0.5 rounded text-[11px] font-bold">{count} calls</span>
+                        </div>
+                      ))}
+                      {Object.keys(analyticsData.requestsByEndpoint || {}).length === 0 && (
+                        <div className="text-slate-500 italic p-2">No API requests recorded yet.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Recent Request Logs */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-300 font-mono text-xs uppercase tracking-wider">Recent Request Audit Log</h4>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleExportAnalyticsCSV}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono underline cursor-pointer"
+                        >
+                          Export CSV
+                        </button>
+                        <button
+                          onClick={handleResetAnalytics}
+                          className="text-[10px] text-rose-400 hover:text-rose-300 font-mono underline cursor-pointer"
+                        >
+                          Reset Analytics
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-950/75 max-h-[220px] overflow-y-auto">
+                      <table className="w-full text-left font-mono text-[11px]">
+                        <thead className="bg-slate-900 text-slate-400 uppercase text-[9px] border-b border-slate-800 sticky top-0">
+                          <tr>
+                            <th className="p-2.5">Time</th>
+                            <th className="p-2.5">Endpoint</th>
+                            <th className="p-2.5">Est. Tokens</th>
+                            <th className="p-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-850">
+                          {analyticsData.requestLogs.map(log => (
+                            <tr key={log.id} className="hover:bg-slate-900/50 transition-colors">
+                              <td className="p-2.5 text-slate-400">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                              <td className="p-2.5 text-indigo-300">{log.endpoint}</td>
+                              <td className="p-2.5 text-slate-200">{log.tokensEstimated} tok</td>
+                              <td className="p-2.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${log.status === 200 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}`}>
+                                  {log.status} {log.status === 429 ? 'Rate Limited' : 'OK'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          {analyticsData.requestLogs.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="p-6 text-center text-slate-500 italic">No request audit logs found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-12 text-center text-rose-400 font-mono">
+                  Failed to load analytics metrics from server.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-900/50 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setShowAnalyticsModal(false)}
+                className="px-4 py-1.5 rounded bg-indigo-600 text-white font-mono text-xs hover:bg-indigo-500 cursor-pointer transition-colors"
+              >
+                Close Analytics
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Layout containing content and sidebars */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 p-2 sm:p-4 overflow-x-hidden">
@@ -794,6 +1162,38 @@ export default function App() {
 
             {isEditingSpecs ? (
               <div className="space-y-4 pt-1 animate-fade-in text-slate-200">
+                {/* Hardware Preset Profiles */}
+                <div className="space-y-2 bg-indigo-950/25 p-3 rounded-lg border border-indigo-500/25">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-mono tracking-wider text-indigo-300 uppercase font-bold flex items-center gap-1.5">
+                      <span>⚡</span> Hardware Preset Profiles
+                    </label>
+                    <span className="text-[9px] font-mono text-slate-400">Instantly switch & compare</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {HARDWARE_PRESETS.map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleApplyPreset(preset)}
+                        className="text-left p-2 rounded bg-slate-950/75 hover:bg-indigo-900/40 border border-slate-800 hover:border-indigo-500/50 transition-all cursor-pointer group flex flex-col gap-0.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-200 group-hover:text-indigo-300 transition-colors">
+                            {preset.name}
+                          </span>
+                          <span className="text-[8.5px] font-mono uppercase bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">
+                            {preset.badge}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight">
+                          {preset.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Info Tip */}
                 <div className="p-3 bg-indigo-950/40 border border-indigo-500/20 rounded text-xs leading-relaxed text-indigo-200 space-y-1">
                   <p className="font-semibold text-indigo-300 flex items-center gap-1.5 font-mono text-[11px]">

@@ -9,9 +9,188 @@ import fs from "fs";
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+app.set("trust proxy", true);
+app.use(express.json({ limit: "1mb" }));
 
 const PORT = 3000;
+
+// Rate Limiting & Token Usage Analytics Persistent Store
+const ANALYTICS_FILE = path.join(process.cwd(), "rate-limit-analytics.json");
+
+interface RequestLog {
+  id: string;
+  timestamp: number;
+  endpoint: string;
+  ip: string;
+  tokensEstimated: number;
+  status: number;
+}
+
+interface AnalyticsData {
+  totalRequests: number;
+  totalTokensConsumed: number;
+  requestsByEndpoint: Record<string, number>;
+  requestLogs: RequestLog[];
+  ipRateLimits: Record<string, { count: number; windowStart: number }>;
+}
+
+let analyticsStore: AnalyticsData = {
+  totalRequests: 0,
+  totalTokensConsumed: 0,
+  requestsByEndpoint: {},
+  requestLogs: [],
+  ipRateLimits: {}
+};
+
+if (fs.existsSync(ANALYTICS_FILE)) {
+  try {
+    const raw = fs.readFileSync(ANALYTICS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    analyticsStore = { ...analyticsStore, ...parsed };
+  } catch (e) {
+    console.warn("Could not read analytics file:", e);
+  }
+}
+
+function saveAnalytics() {
+  try {
+    fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(analyticsStore, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Could not save analytics file:", e);
+  }
+}
+
+const RATE_LIMIT_MAX_REQUESTS = 30; // max 30 requests per minute
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+
+app.use("/api", (req, res, next) => {
+  if (req.path.startsWith("/analytics")) {
+    return next();
+  }
+
+  // Safely extract client IP from x-forwarded-for (first entry) or req.ip
+  const forwarded = req.headers["x-forwarded-for"];
+  const clientIp = typeof forwarded === "string" 
+    ? forwarded.split(",")[0].trim() 
+    : (req.ip || "127.0.0.1");
+
+  const now = Date.now();
+
+  // Prevent memory leak by cleaning up expired rate limit entries if map gets too large
+  const rateLimitKeys = Object.keys(analyticsStore.ipRateLimits);
+  if (rateLimitKeys.length > 2000) {
+    for (const key of rateLimitKeys) {
+      if (now - analyticsStore.ipRateLimits[key].windowStart > RATE_LIMIT_WINDOW_MS * 2) {
+        delete analyticsStore.ipRateLimits[key];
+      }
+    }
+  }
+
+  if (!analyticsStore.ipRateLimits[clientIp]) {
+    analyticsStore.ipRateLimits[clientIp] = { count: 0, windowStart: now };
+  }
+
+  const userLimit = analyticsStore.ipRateLimits[clientIp];
+  if (now - userLimit.windowStart > RATE_LIMIT_WINDOW_MS) {
+    userLimit.count = 0;
+    userLimit.windowStart = now;
+  }
+
+  userLimit.count++;
+  if (userLimit.count > RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.ceil((RATE_LIMIT_WINDOW_MS - (now - userLimit.windowStart)) / 1000);
+    
+    analyticsStore.totalRequests++;
+    const endpoint = req.path;
+    analyticsStore.requestsByEndpoint[endpoint] = (analyticsStore.requestsByEndpoint[endpoint] || 0) + 1;
+    analyticsStore.requestLogs.unshift({
+      id: Math.random().toString(36).substring(2, 9),
+      timestamp: now,
+      endpoint,
+      ip: clientIp,
+      tokensEstimated: 0,
+      status: 429
+    });
+    if (analyticsStore.requestLogs.length > 50) analyticsStore.requestLogs.pop();
+    saveAnalytics();
+
+    res.setHeader("Retry-After", retryAfterSec.toString());
+    return res.status(429).json({
+      error: "Rate limit exceeded (Max 30 requests per minute). Please wait a moment before sending another request.",
+      retryAfterSeconds: retryAfterSec
+    });
+  }
+
+  next();
+});
+
+function recordApiUsage(endpoint: string, ip: string, inputString: string, outputString: string = "", status: number = 200) {
+  const now = Date.now();
+  const inputTokens = Math.ceil(inputString.length / 4);
+  const outputTokens = Math.ceil(outputString.length / 4);
+  const totalTokens = inputTokens + outputTokens;
+
+  analyticsStore.totalRequests++;
+  analyticsStore.totalTokensConsumed += totalTokens;
+  analyticsStore.requestsByEndpoint[endpoint] = (analyticsStore.requestsByEndpoint[endpoint] || 0) + 1;
+
+  analyticsStore.requestLogs.unshift({
+    id: Math.random().toString(36).substring(2, 9),
+    timestamp: now,
+    endpoint,
+    ip,
+    tokensEstimated: totalTokens,
+    status
+  });
+
+  if (analyticsStore.requestLogs.length > 50) {
+    analyticsStore.requestLogs.pop();
+  }
+
+  saveAnalytics();
+}
+
+app.get("/api/analytics", (req, res) => {
+  res.json({
+    totalRequests: analyticsStore.totalRequests,
+    totalTokensConsumed: analyticsStore.totalTokensConsumed,
+    requestsByEndpoint: analyticsStore.requestsByEndpoint,
+    requestLogs: analyticsStore.requestLogs,
+    rateLimitMax: RATE_LIMIT_MAX_REQUESTS,
+    rateLimitWindowSeconds: RATE_LIMIT_WINDOW_MS / 1000
+  });
+});
+
+app.post("/api/analytics/reset", (req, res) => {
+  analyticsStore = {
+    totalRequests: 0,
+    totalTokensConsumed: 0,
+    requestsByEndpoint: {},
+    requestLogs: [],
+    ipRateLimits: {}
+  };
+  saveAnalytics();
+  res.json({ success: true, message: "Analytics reset successfully." });
+});
+
+app.get("/api/analytics/export", (req, res) => {
+  const headers = ["ID", "Timestamp", "ISO_Date", "Endpoint", "Client_IP", "Tokens_Estimated", "Status"];
+  const rows = analyticsStore.requestLogs.map(log => [
+    log.id,
+    log.timestamp,
+    new Date(log.timestamp).toISOString(),
+    `"${log.endpoint}"`,
+    log.ip,
+    log.tokensEstimated,
+    log.status
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=api-audit-logs.csv");
+  res.send(csvContent);
+});
 
 // Lazy initialization of Gemini client
 let ai: GoogleGenAI | null = null;
@@ -84,9 +263,12 @@ Rules for your responses:
       },
     });
 
-    res.json({ text: response.text });
+    const replyText = response.text || "";
+    recordApiUsage("/api/chat", req.ip || "127.0.0.1", message, replyText, 200);
+    res.json({ text: replyText });
   } catch (error: any) {
     console.error("Gemini API Error:", error);
+    recordApiUsage("/api/chat", req.ip || "127.0.0.1", req.body?.message || "", error.message || "", 500);
     res.status(500).json({ error: error.message || "An error occurred with the AI Advisor." });
   }
 });
@@ -133,6 +315,7 @@ Do not wrap the JSON object inside markdown backticks or any other text. Return 
 
     const textResult = response.text ? response.text.trim() : "";
     const parsed = JSON.parse(textResult);
+    recordApiUsage("/api/analyze-model", req.ip || "127.0.0.1", prompt, textResult, 200);
     res.json(parsed);
   } catch (error: any) {
     console.error("Dynamic model analysis API Error:", error);
