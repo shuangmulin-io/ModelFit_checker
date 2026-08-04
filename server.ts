@@ -70,7 +70,7 @@ Rules for your responses:
 
     // System instruction is passed in config
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-flash-lite-latest",
       contents: [
         ...history.map((h: any) => ({
           role: h.role === "user" ? "user" as const : "model" as const,
@@ -123,7 +123,7 @@ You MUST return the response strictly as a JSON object matching this schema:
 Do not wrap the JSON object inside markdown backticks or any other text. Return ONLY the raw JSON string.`;
 
     const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-flash-lite-latest",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
